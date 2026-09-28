@@ -1,110 +1,43 @@
 <!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8"><title>Taza AR (Android)</title>
+<html lang="es"><head><meta charset="utf-8"><title>Taza AR con marcador</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<style>#overlay{position:relative}
-body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#fff;text-align:center}
-#start{margin-top:40vh;font:inherit;font-size:1.2rem;padding:14px 28px;border-radius:28px;border:0;background:#2a6df4;color:#fff}
-#msg{padding:12px}
-#ui{display:none;position:absolute;left:0;right:0;bottom:0;padding:12px;background:linear-gradient(transparent,#000a)}
-#ui button{font:inherit;padding:10px 14px;margin:3px;border-radius:18px;border:1px solid #fff;background:#0008;color:#fff}
+<script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<style>
+body{margin:0;overflow:hidden}
+#ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:12px;text-align:center;color:#fff;background:linear-gradient(transparent,#000a);font-family:system-ui,sans-serif}
+#ui button{font:inherit;padding:10px 18px;margin:3px;border-radius:18px;border:1px solid #fff;background:#0008;color:#fff}
 #ui button.on{background:#2a6df4;border-color:#2a6df4}
-#hint{margin:6px}
+#st{font-size:.85rem;margin:4px}
 </style></head><body>
-<button id="start">Iniciar AR</button><div id="msg"></div>
-<div id="overlay"><div id="ui">
-  <div id="hint">Apunta a una superficie y toca cuando veas el pincho.</div>
-  <div>Altura del celular al piso: <input id="hgt" type="range" min="0.6" max="2" step="0.05" value="1.4"> <span id="hv">1.40 m</span></div>
-  <div id="dim">Taza: 8 cm de diámetro × 9.5 cm de alto</div>
-  <button id="bc" class="on">Taza</button><button id="bb">Caja</button>
-  <button id="reset">Reiniciar</button><button id="exit">Salir</button>
-</div></div>
+<div id="ui"><div id="st">Apunta la cámara al mouse pad.</div>
+<button id="bc" class="on">Taza</button><button id="bb">Caja</button></div>
+<a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta:0.001; uiScanning:yes; uiLoading:yes"
+  color-space="sRGB" renderer="colorManagement:true, physicallyCorrectLights:true"
+  vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false">
+  <a-assets>
+    <a-asset-item id="mCup" src="taza.glb"></a-asset-item>
+    <a-asset-item id="mBox" src="caja.glb"></a-asset-item>
+  </a-assets>
+  <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
+  <a-light type="ambient" intensity="1.2"></a-light>
+  <a-light type="directional" intensity="1" position="1 2 2"></a-light>
+  <a-entity id="tgt" mindar-image-target="targetIndex:0">
+    <a-entity id="obj" rotation="90 0 0">
+      <a-gltf-model id="cup" src="#mCup"></a-gltf-model>
+      <a-gltf-model id="box" src="#mBox" visible="false"></a-gltf-model>
+    </a-entity>
+  </a-entity>
+</a-scene>
 <script>
-const $=id=>document.getElementById(id);
-let ringMat,renderer,scene,camera,reticle,obj,cup,box,session,hitSource=null,placed=false;
-
-function build(){
-  scene=new THREE.Scene();
-  camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,0.01,20);
-  scene.add(new THREE.HemisphereLight(0xffffff,0x888888,1.1));
-  const dl=new THREE.DirectionalLight(0xffffff,0.8);dl.position.set(1,3,2);scene.add(dl);
-  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-  renderer.setPixelRatio(devicePixelRatio);renderer.setSize(innerWidth,innerHeight);
-  renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local');
-  document.body.appendChild(renderer.domElement);
-  renderer.domElement.style.display='none';
-
-  // Objetos con medidas reales, en metros
-  const mat=new THREE.MeshStandardMaterial({color:0xeef2fa,roughness:.5,side:THREE.DoubleSide});
-  const prof=[[0,0],[.04,0],[.04,.095],[.0375,.095],[.0375,.006],[0,.006]].map(p=>new THREE.Vector2(p[0],p[1]));
-  cup=new THREE.Group();
-  cup.add(new THREE.Mesh(new THREE.LatheGeometry(prof,48),mat));
-  const h=new THREE.Mesh(new THREE.TorusGeometry(.025,.006,12,24,Math.PI),mat);
-  h.rotation.z=-Math.PI/2;h.position.set(.038,.05,0);cup.add(h);
-  box=new THREE.Mesh(new THREE.BoxGeometry(.1,.1,.1),new THREE.MeshStandardMaterial({color:0xb8853f,roughness:.8}));
-  const bm=new THREE.Mesh(new THREE.BoxGeometry(.1,.1,.1),box.material);bm.position.y=.05;const bg=new THREE.Group();bg.add(bm);box=bg;box.visible=false;
-  if(THREE.GLTFLoader){const L=new THREE.GLTFLoader();
-  L.load('taza.glb',g=>{cup.clear();cup.add(g.scene)},undefined,()=>{});
-  L.load('caja.glb',g=>{box.clear();box.add(g.scene)},undefined,()=>{});}
-  obj=new THREE.Group();obj.add(cup,box);obj.visible=false;scene.add(obj);
-
-  // Marcador: anillo + pincho (cono apuntando hacia abajo)
-  reticle=new THREE.Group();reticle.matrixAutoUpdate=false;reticle.visible=false;
-  const ring=new THREE.Mesh(new THREE.RingGeometry(.06,.075,32).rotateX(-Math.PI/2),(ringMat=new THREE.MeshBasicMaterial({color:0x2a6df4})));
-  const spike=new THREE.Mesh(new THREE.ConeGeometry(.02,.05,4).rotateX(Math.PI),new THREE.MeshStandardMaterial({color:0x2ad46d}));
-  spike.position.y=.16;spike.name='spike';
-  reticle.add(ring,spike);scene.add(reticle);
-}
-
-async function start(){
-  if(!navigator.xr||!(await navigator.xr.isSessionSupported('immersive-ar'))){
-    $('msg').textContent='Este dispositivo o navegador no soporta AR web. Usa Chrome en Android con ARCore.';return;
-  }
-  if(!renderer)build();
-  session=await navigator.xr.requestSession('immersive-ar',{
-    requiredFeatures:['hit-test'],optionalFeatures:['dom-overlay'],domOverlay:{root:$('overlay')}});
-  $('ui').addEventListener('beforexrselect',e=>e.preventDefault());
-  await renderer.xr.setSession(session);
-  const viewer=await session.requestReferenceSpace('viewer');
-  hitSource=await session.requestHitTestSource({space:viewer});
-  session.addEventListener('select',onSelect);
-  session.addEventListener('end',()=>{hitSource=null;$('ui').style.display='none';$('start').style.display='';});
-  $('start').style.display='none';$('ui').style.display='block';reset();
-  renderer.setAnimationLoop(render);
-}
-function onSelect(){
-  if(placed||!reticle.visible)return;
-  obj.position.setFromMatrixPosition(reticle.matrix);
-  obj.visible=true;placed=true;reticle.visible=false;
-  $('hint').textContent='✔ Anclada. Camina alrededor para verla. Usa Reiniciar para moverla.';
-}
-function reset(){placed=false;obj.visible=false;$('hint').textContent='Apunta a una superficie y toca cuando veas el pincho.';}
-function render(t,frame){
-  if(frame&&!placed){
-    const ref=renderer.xr.getReferenceSpace(),vp=frame.getViewerPose(ref);
-    let real=false;
-    if(hitSource){const r=frame.getHitTestResults(hitSource);
-      if(r.length){reticle.matrix.fromArray(r[0].getPose(ref).transform.matrix);reticle.visible=true;real=true;}}
-    ringMat.color.set(real?0x2a6df4:0xff9500);
-    if(!real){
-      reticle.visible=false;
-      if(vp){const p=vp.transform.position,q=vp.transform.orientation;
-        const o=new THREE.Vector3(p.x,p.y,p.z);
-        const d=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion(q.x,q.y,q.z,q.w));
-        if(d.y<-0.05){const s=-H()/d.y;
-          if(s<6){const pt=o.addScaledVector(d,s);reticle.matrix.makeTranslation(pt.x,pt.y,pt.z);reticle.visible=true;}}}
-    }
-    $('hint').textContent=real?'Superficie detectada: toca para colocar.':'Sin superficie: usando piso estimado (naranja). Apunta al piso y ajusta la altura.';
-    if(reticle.visible)reticle.getObjectByName('spike').rotation.y=t/500;
-  }
-  renderer.render(scene,camera);
-}
-const H=()=>parseFloat($('hgt').value);
-$('hgt').oninput=()=>{$('hv').textContent=H().toFixed(2)+' m'};
-function pick(c){cup.visible=c;box.visible=!c;
-  $('bc').className=c?'on':'';$('bb').className=c?'':'on';
-  $('dim').textContent=c?'Taza: 8 cm de diámetro × 9.5 cm de alto':'Caja: 10 × 10 × 10 cm';}
-$('start').onclick=start;$('bc').onclick=()=>pick(true);$('bb').onclick=()=>pick(false);
-$('reset').onclick=reset;$('exit').onclick=()=>session&&session.end();
+// Ancho REAL del mouse pad en cm. Cámbialo aquí o en el link: ?w=25
+const W=parseFloat(new URLSearchParams(location.search).get('w'))||25;
+const s=100/W; // 1 unidad = ancho del pad; los modelos están en metros
+document.getElementById('obj').setAttribute('scale',`${s} ${s} ${s}`);
+const $=id=>document.getElementById(id),t=$('tgt');
+t.addEventListener('targetFound',()=>$('st').textContent='Mouse pad detectado ✔ (ancho '+W+' cm)');
+t.addEventListener('targetLost',()=>$('st').textContent='Vuelve a apuntar al mouse pad.');
+function pick(c){$('cup').setAttribute('visible',c);$('box').setAttribute('visible',!c);
+$('bc').className=c?'on':'';$('bb').className=c?'':'on';}
+$('bc').onclick=()=>pick(true);$('bb').onclick=()=>pick(false);
 </script></body></html>
