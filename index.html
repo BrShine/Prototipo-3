@@ -14,13 +14,14 @@ body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#fff;text-a
 <button id="start">Iniciar AR</button><div id="msg"></div>
 <div id="ui">
   <div id="hint">Apunta a una superficie y toca cuando veas el pincho.</div>
+  <div>Altura del celular al piso: <input id="hgt" type="range" min="0.6" max="2" step="0.05" value="1.4"> <span id="hv">1.40 m</span></div>
   <div id="dim">Taza: 8 cm de diámetro × 9.5 cm de alto</div>
   <button id="bc" class="on">Taza</button><button id="bb">Caja</button>
   <button id="reset">Reiniciar</button><button id="exit">Salir</button>
 </div>
 <script>
 const $=id=>document.getElementById(id);
-let renderer,scene,camera,reticle,obj,cup,box,session,hitSource=null,placed=false;
+let ringMat,renderer,scene,camera,reticle,obj,cup,box,session,hitSource=null,placed=false;
 
 function build(){
   scene=new THREE.Scene();
@@ -46,7 +47,7 @@ function build(){
 
   // Marcador: anillo + pincho (cono apuntando hacia abajo)
   reticle=new THREE.Group();reticle.matrixAutoUpdate=false;reticle.visible=false;
-  const ring=new THREE.Mesh(new THREE.RingGeometry(.06,.075,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x2a6df4}));
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.06,.075,32).rotateX(-Math.PI/2),(ringMat=new THREE.MeshBasicMaterial({color:0x2a6df4})));
   const spike=new THREE.Mesh(new THREE.ConeGeometry(.02,.05,4).rotateX(Math.PI),new THREE.MeshStandardMaterial({color:0x2ad46d}));
   spike.position.y=.16;spike.name='spike';
   reticle.add(ring,spike);scene.add(reticle);
@@ -76,16 +77,27 @@ function onSelect(){
 }
 function reset(){placed=false;obj.visible=false;$('hint').textContent='Apunta a una superficie y toca cuando veas el pincho.';}
 function render(t,frame){
-  if(frame&&hitSource&&!placed){
-    const r=frame.getHitTestResults(hitSource);
-    if(r.length){
-      const pose=r[0].getPose(renderer.xr.getReferenceSpace());
-      reticle.visible=true;reticle.matrix.fromArray(pose.transform.matrix);
-      reticle.getObjectByName('spike').rotation.y=t/500;
-    }else reticle.visible=false;
+  if(frame&&!placed){
+    const ref=renderer.xr.getReferenceSpace(),vp=frame.getViewerPose(ref);
+    let real=false;
+    if(hitSource){const r=frame.getHitTestResults(hitSource);
+      if(r.length){reticle.matrix.fromArray(r[0].getPose(ref).transform.matrix);reticle.visible=true;real=true;}}
+    ringMat.color.set(real?0x2a6df4:0xff9500);
+    if(!real){
+      reticle.visible=false;
+      if(vp){const p=vp.transform.position,q=vp.transform.orientation;
+        const o=new THREE.Vector3(p.x,p.y,p.z);
+        const d=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion(q.x,q.y,q.z,q.w));
+        if(d.y<-0.05){const s=-H()/d.y;
+          if(s<6){const pt=o.addScaledVector(d,s);reticle.matrix.makeTranslation(pt.x,pt.y,pt.z);reticle.visible=true;}}}
+    }
+    $('hint').textContent=real?'Superficie detectada: toca para colocar.':'Sin superficie: usando piso estimado (naranja). Apunta al piso y ajusta la altura.';
+    if(reticle.visible)reticle.getObjectByName('spike').rotation.y=t/500;
   }
   renderer.render(scene,camera);
 }
+const H=()=>parseFloat($('hgt').value);
+$('hgt').oninput=()=>{$('hv').textContent=H().toFixed(2)+' m'};
 function pick(c){cup.visible=c;box.visible=!c;
   $('bc').className=c?'on':'';$('bb').className=c?'':'on';
   $('dim').textContent=c?'Taza: 8 cm de diámetro × 9.5 cm de alto':'Caja: 10 × 10 × 10 cm';}
