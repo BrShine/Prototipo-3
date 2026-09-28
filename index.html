@@ -10,9 +10,12 @@ body{margin:0;overflow:hidden}
 #ui button.on{background:#2a6df4;border-color:#2a6df4}
 #st{font-size:.85rem;margin:4px}
 </style></head><body>
+<div id="intro" style="position:fixed;inset:0;z-index:5;background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;text-align:center;padding:24px">
+<h2 style="margin:0 0 16px">Taza en AR</h2>
+<button id="go" style="font:inherit;font-size:1.2rem;padding:14px 28px;border-radius:28px;border:0;background:#2a6df4;color:#fff">Iniciar cámara</button></div>
 <div id="ui"><div id="st">Apunta la cámara al mouse pad.</div>
 <button id="bc" class="on">Taza</button><button id="bb">Caja</button></div>
-<a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta:0.001; uiScanning:yes; uiLoading:yes"
+<a-scene mindar-image="autoStart:false; imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta:0.001; uiScanning:yes; uiLoading:no"
   color-space="sRGB" renderer="colorManagement:true, physicallyCorrectLights:true"
   vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false">
   <a-assets>
@@ -35,6 +38,18 @@ const W=parseFloat(new URLSearchParams(location.search).get('w'))||25;
 const s=100/W; // 1 unidad = ancho del pad; los modelos están en metros
 document.getElementById('obj').setAttribute('scale',`${s} ${s} ${s}`);
 const $=id=>document.getElementById(id),t=$('tgt');
+$('st').textContent='Cargando… si tarda mucho, revisa el mensaje aquí.';
+fetch('targets.mind',{method:'HEAD'}).then(r=>{if(!r.ok)$('st').textContent='Falta el archivo targets.mind junto al index.html'}).catch(()=>{});
+const sc=document.querySelector('a-scene');
+sc.addEventListener('arReady',()=>$('st').textContent='Cámara lista. Apunta al mouse pad.');
+sc.addEventListener('arError',()=>$('st').textContent='Error al iniciar la cámara o el archivo targets.mind.');
+$('go').onclick=async()=>{
+  try{const f=document.documentElement.requestFullscreen({navigationUI:'hide'});if(f&&f.catch)f.catch(()=>{});}catch(e){}
+  $('go').disabled=true;$('st').textContent='Iniciando cámara…';
+  try{await sc.systems['mindar-image-system'].start();$('intro').style.display='none';}
+  catch(e){$('st').textContent='Error al iniciar: '+(e&&e.message||e);$('go').disabled=false;}
+};
+window.onerror=m=>{$('st').textContent='Error: '+m;};
 t.addEventListener('targetFound',()=>$('st').textContent='Mouse pad detectado ✔ (ancho '+W+' cm)');
 t.addEventListener('targetLost',()=>$('st').textContent='Vuelve a apuntar al mouse pad.');
 function pick(c){$('cup').setAttribute('visible',c);$('box').setAttribute('visible',!c);
